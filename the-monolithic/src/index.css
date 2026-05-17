@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+@theme {
+  /* =========================================
+     1. COLORS: STACKED OBSIDIAN LAYER SYSTEM
+     ========================================= */
+
+  /* Warstwy tła (Depth) */
+  --color-surface: #0e0e0e;                    /* Base Layer - The void */
+  --color-surface-container-lowest: #050505;   /* Używane do inputów (wycięte w dół) */
+  --color-surface-container-low: #131313;      /* Secondary Layer - Sidebary */
+  --color-surface-container-high: #1f2020;     /* Interactive Layer - Hover/Aktywne panele */
+  --color-surface-container-highest: #252626;  /* Prominence Layer - Modale/Palety */
+
+  /* Signature Accents (Akcenty) */
+  --color-primary: #adc6ff;                    /* Główne akcje (Commit, Push) */
+  --color-secondary: #06b77f;                  /* Sukces / Dodane linie diff */
+  --color-tertiary: #ff716a;                   /* Błędy / Usunięte linie diff */
+
+  /* Tekst - Zakaz używania #FFFFFF wg dokumentacji! */
+  --color-on-surface: #e7e5e5;                 /* Główny tekst (zastępuje biały) */
+  --color-on-surface-variant: #a3a3a3;         /* Tekst z de-fokusem (ścieżki, timestampy) */
+  --color-outline-variant: rgba(231, 229, 229, 0.15); /* Ghost Border dla dostępności w diffach */
+
+  /* =========================================
+     2. TYPOGRAPHY: THE EDITORIAL MONOSPACE
+     ========================================= */
+  --font-display: "Manrope", sans-serif;       /* Display & Headlines */
+  --font-body: "Inter", sans-serif;            /* Body & Labels */
+  --font-mono: "JetBrains Mono", monospace;    /* The Monospace Exception */
+
+  /* Ściskanie tekstu dla dużych nagłówków (premium feel) */
+  --tracking-editorial: -0.02em;
+
+  /* =========================================
+     3. ELEVATION: PHYSICALITY
+     ========================================= */
+
+  /* Ambient Shadow: 20-40px blur, 8% opac, kolor on-surface */
+  --shadow-ambient: 0 20px 40px rgba(231, 229, 229, 0.08);
+
+  /* Border Radius */
+  --radius-button: 0.375rem; /* Corner radius md z dokumentacji */
+  --radius-bento: 12px;      /* Ogólne zaokrąglenia dla Layoutu */
+}
+
+@layer base {
+  /* Ustawienie domyślnych wartości na cały projekt */
+  body {
+    background-color: var(--color-surface);
+    color: var(--color-on-surface);
+    font-family: var(--font-body); /* Domyślnie Inter dla czytelności UI */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Automatyczne mapowanie Manrope na wszystkie nagłówki */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+  }
+}
+
+/* Wymuszenie globalnego rozmiaru dla czcionek monospace w aplikacji */
+.font-mono {
+  font-size: var(--global-mono-size, 13px) !important;
+}
