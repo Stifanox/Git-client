@@ -1,7 +1,15 @@
-import { NavLink } from 'react-router-dom';
-import { Database, GitBranch, History, List, Settings, HelpCircle, SquareTerminal } from 'lucide-react';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { Database, GitBranch, History, List, Settings, HelpCircle, SquareTerminal, LogOut } from 'lucide-react';
+import { useAuthStore } from '../../store/useAuthStore.js';
 
 export default function Sidebar() {
+    const { user, logout } = useAuthStore();
+    const navigate = useNavigate();
+
+    const handleLogout = async () => {
+        await logout();
+        navigate('/login', { replace: true });
+    };
     const topNavItems = [
         { icon: Database, label: 'Repositories', path: '/repositories' },
         { icon: GitBranch, label: 'Branches', path: '/branches' },
@@ -47,6 +55,25 @@ export default function Sidebar() {
                     </NavLink>
                 ))}
             </nav>
+
+            {user && (
+                <div className="px-6 pb-4">
+                    <p className="truncate text-[11px] font-bold uppercase tracking-[0.08em] text-on-surface-variant font-body">
+                        Signed in as
+                    </p>
+                    <p className="mt-1 truncate text-[13px] font-medium text-on-surface font-body" title={user.email ?? ''}>
+                        {user.email}
+                    </p>
+                    <button
+                        type="button"
+                        onClick={handleLogout}
+                        className={`${linkBaseClasses} ${linkInactiveClasses} mt-3`}
+                    >
+                        <LogOut className="w-[18px] h-[18px]" strokeWidth={1.75} />
+                        Sign Out
+                    </button>
+                </div>
+            )}
 
             {/* Bottom Navigation */}
             <div className="px-3 pb-6 space-y-1 mt-auto">

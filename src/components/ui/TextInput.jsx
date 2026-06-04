@@ -1,4 +1,4 @@
-export default function TextInput({ label, value, onChange, disabled }) {
+export default function TextInput({ label, value, onChange, disabled, type = 'text' }) {
     return (
         <div className="w-full">
             {label && (
@@ -7,7 +7,7 @@ export default function TextInput({ label, value, onChange, disabled }) {
                 </label>
             )}
             <input
-                type="text"
+                type={type}
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
                 disabled={disabled}

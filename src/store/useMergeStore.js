@@ -1,115 +1,238 @@
 import { create } from 'zustand';
 import {
+    allBlocksResolved,
     countUnresolvedBlocks,
     countResolvedBlocks,
-    allBlocksResolved,
+    createMergeResult,
     getBlockById,
     getBaselineMergedContent,
     linesInBlock,
-} from './mergeMockFile.js';
+} from '../merge/engine.js';
+import { createDemoMergeSession } from '../merge/scenarios/index.js';
 
-function clearEditsForBlock(mergedEdits, blockId, blockChoices) {
+/** @typedef {import('../merge/types.js').MergeFileState} MergeFileState */
+
+function clearEditsForBlock(document, mergedEdits, blockId) {
     const next = { ...mergedEdits };
-    for (const line of linesInBlock(blockId)) {
+    for (const line of linesInBlock(document, blockId)) {
         delete next[line];
     }
     return next;
 }
 
-export const useMergeStore = create((set, get) => ({
-    fileName: 'main_controller.ts',
-    branch: 'main',
-    searchQuery: '',
-    lastSync: '2 mins ago',
-    cursor: { line: 20, col: 1 },
-    activeBlockId: 'c1',
-    showConflictOverlay: true,
-    mergeApplied: false,
+function getActiveFile(state) {
+    return state.files.find((f) => f.fileId === state.activeFileId) ?? state.files[0];
+}
 
-    blockChoices: {},
-    mergedEdits: {},
+function mapActiveFile(state, updater) {
+    return state.files.map((file) => {
+        if (file.fileId !== state.activeFileId) return file;
+        return { ...file, ...updater(file) };
+    });
+}
+
+const demoSession = createDemoMergeSession();
+const initialActive = getActiveFile({ files: demoSession.files, activeFileId: demoSession.activeFileId });
+const initialBlock = initialActive
+    ? getBlockById(initialActive.document, initialActive.activeBlockId ?? '')
+    : null;
+
+export const useMergeStore = create((set, get) => ({
+    files: demoSession.files,
+    activeFileId: demoSession.activeFileId,
+    mergeApplied: false,
+    mergeResults: null,
+
+    searchQuery: '',
+    cursor: { line: initialBlock?.startLine ?? 1, col: 1 },
+
+    setActiveFile: (fileId) => {
+        const { files } = get();
+        const file = files.find((f) => f.fileId === fileId);
+        if (!file) return;
+        const block = file.activeBlockId
+            ? getBlockById(file.document, file.activeBlockId)
+            : file.document.blocks[0];
+        set({
+            activeFileId: fileId,
+            cursor: { line: block?.startLine ?? 1, col: 1 },
+        });
+    },
+
+    /** Docelowo: otwarcie sesji z wieloma plikami po konflikcie Gita. */
+    openMergeSession: (documents) => {
+        const files = documents.map((document) => ({
+            fileId: document.path,
+            document,
+            blockChoices: {},
+            mergedEdits: {},
+            activeBlockId: document.blocks[0]?.id ?? null,
+        }));
+        const first = files[0];
+        set({
+            files,
+            activeFileId: first?.fileId ?? null,
+            mergeApplied: false,
+            mergeResults: null,
+            searchQuery: '',
+            cursor: { line: first?.document.blocks[0]?.startLine ?? 1, col: 1 },
+        });
+    },
 
     applyBlockFromLeft: (blockId) => {
-        const block = getBlockById(blockId);
-        if (!block) return;
         set((state) => {
-            const blockChoices = { ...state.blockChoices, [blockId]: 'left' };
-            const mergedEdits = clearEditsForBlock(state.mergedEdits, blockId, blockChoices);
+            const active = getActiveFile(state);
+            if (!active) return state;
+            const block = getBlockById(active.document, blockId);
+            if (!block) return state;
             return {
-                blockChoices,
-                mergedEdits,
-                activeBlockId: blockId,
+                files: mapActiveFile(state, (file) => ({
+                    blockChoices: { ...file.blockChoices, [blockId]: 'left' },
+                    mergedEdits: clearEditsForBlock(file.document, file.mergedEdits, blockId),
+                    activeBlockId: blockId,
+                })),
+                mergeApplied: false,
+                mergeResults: null,
                 cursor: { line: block.startLine, col: 1 },
-                showConflictOverlay: countUnresolvedBlocks(blockChoices, mergedEdits) > 0,
             };
         });
     },
 
     applyBlockFromRight: (blockId) => {
-        const block = getBlockById(blockId);
-        if (!block) return;
         set((state) => {
-            const blockChoices = { ...state.blockChoices, [blockId]: 'right' };
-            const mergedEdits = clearEditsForBlock(state.mergedEdits, blockId, blockChoices);
+            const active = getActiveFile(state);
+            if (!active) return state;
+            const block = getBlockById(active.document, blockId);
+            if (!block) return state;
             return {
-                blockChoices,
-                mergedEdits,
-                activeBlockId: blockId,
+                files: mapActiveFile(state, (file) => ({
+                    blockChoices: { ...file.blockChoices, [blockId]: 'right' },
+                    mergedEdits: clearEditsForBlock(file.document, file.mergedEdits, blockId),
+                    activeBlockId: blockId,
+                })),
+                mergeApplied: false,
+                mergeResults: null,
                 cursor: { line: block.startLine, col: 1 },
-                showConflictOverlay: countUnresolvedBlocks(blockChoices, mergedEdits) > 0,
             };
         });
     },
 
     setActiveBlock: (blockId) => {
-        const block = getBlockById(blockId);
+        const { files, activeFileId } = get();
+        const active = files.find((f) => f.fileId === activeFileId);
+        if (!active) return undefined;
+        const block = getBlockById(active.document, blockId);
         if (!block) return undefined;
-        set({
-            activeBlockId: blockId,
-            showConflictOverlay: true,
+        set((state) => ({
+            files: mapActiveFile(state, () => ({ activeBlockId: blockId })),
             cursor: { line: block.startLine, col: 1 },
-        });
+        }));
         return block.startLine;
     },
 
     setMergedLineContent: (line, content) => {
         set((state) => {
-            const baseline = getBaselineMergedContent(line, state.blockChoices);
-            const mergedEdits = { ...state.mergedEdits };
-            if (content === baseline) {
-                delete mergedEdits[line];
-            } else {
-                mergedEdits[line] = content;
+            const active = getActiveFile(state);
+            if (!active) return state;
+
+            const baseline = getBaselineMergedContent(
+                active.document,
+                line,
+                active.blockChoices
+            );
+            const hadEdit = Object.hasOwn(active.mergedEdits, line);
+            const needsEdit = content !== baseline;
+
+            if (needsEdit) {
+                if (hadEdit && active.mergedEdits[line] === content) return state;
+            } else if (!hadEdit) {
+                return state;
             }
+
             return {
-                mergedEdits,
-                cursor: { line, col: Math.max(1, content.length) },
+                files: mapActiveFile(state, (file) => {
+                    const mergedEdits = { ...file.mergedEdits };
+                    if (needsEdit) {
+                        mergedEdits[line] = content;
+                    } else {
+                        delete mergedEdits[line];
+                    }
+                    return { mergedEdits };
+                }),
+                mergeApplied: false,
+                mergeResults: null,
             };
         });
     },
 
     setCursor: (cursor) => set({ cursor }),
 
-    dismissConflictOverlay: () => set({ showConflictOverlay: false }),
-
     setSearchQuery: (searchQuery) => set({ searchQuery }),
 
     applyMerge: () => {
-        const { blockChoices, mergedEdits } = get();
-        if (!allBlocksResolved(blockChoices, mergedEdits)) return;
-        set({ mergeApplied: true, showConflictOverlay: false });
+        const { files } = get();
+        const allReady = files.every((file) =>
+            allBlocksResolved(file.document, file.blockChoices, file.mergedEdits)
+        );
+        if (!allReady) return;
+        set({
+            mergeApplied: true,
+            mergeResults: files.map((file) =>
+                createMergeResult(file.document, file.blockChoices, file.mergedEdits)
+            ),
+        });
     },
 }));
 
-export const selectUnresolvedBlocks = (state) =>
-    countUnresolvedBlocks(state.blockChoices, state.mergedEdits);
-export const selectResolvedBlocks = (state) =>
-    countResolvedBlocks(state.blockChoices, state.mergedEdits);
-export const selectCanApplyMerge = (state) =>
-    allBlocksResolved(state.blockChoices, state.mergedEdits) && !state.mergeApplied;
-export const selectActiveBlockLine = (state) => {
-    const block = getBlockById(state.activeBlockId);
-    return block?.startLine ?? null;
+/** @param {import('../merge/types.js').MergeFileState} file */
+function isFileResolved(file) {
+    return allBlocksResolved(file.document, file.blockChoices, file.mergedEdits);
+}
+
+export const selectActiveFile = (state) => getActiveFile(state);
+
+export const selectDocument = (state) => selectActiveFile(state)?.document;
+
+export const selectBlocks = (state) => selectActiveFile(state)?.document.blocks;
+
+export const selectBlockChoices = (state) => selectActiveFile(state)?.blockChoices;
+
+export const selectMergedEdits = (state) => selectActiveFile(state)?.mergedEdits;
+
+export const selectActiveBlockId = (state) => selectActiveFile(state)?.activeBlockId ?? null;
+
+export const selectUnresolvedBlocks = (state) => {
+    const active = selectActiveFile(state);
+    if (!active) return 0;
+    return countUnresolvedBlocks(active.document, active.blockChoices, active.mergedEdits);
 };
 
-export { MERGE_BLOCKS } from './mergeMockFile.js';
+export const selectResolvedBlocks = (state) => {
+    const active = selectActiveFile(state);
+    if (!active) return 0;
+    return countResolvedBlocks(active.document, active.blockChoices, active.mergedEdits);
+};
+
+export const selectFileStatuses = (state) =>
+    state.files.map((file) => {
+        const unresolved = countUnresolvedBlocks(
+            file.document,
+            file.blockChoices,
+            file.mergedEdits
+        );
+        return {
+            fileId: file.fileId,
+            path: file.document.path,
+            resolved: isFileResolved(file),
+            unresolvedBlocks: unresolved,
+            totalBlocks: file.document.blocks.length,
+        };
+    });
+
+export const selectResolvedFileCount = (state) =>
+    state.files.filter(isFileResolved).length;
+
+export const selectCanApplyMerge = (state) =>
+    state.files.length > 0 &&
+    state.files.every(isFileResolved) &&
+    !state.mergeApplied;

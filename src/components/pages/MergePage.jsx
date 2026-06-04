@@ -8,59 +8,103 @@ import {
     Redo2,
 } from 'lucide-react';
 import { useMemo, useCallback } from 'react';
-import { buildMergedLines, buildLocalFile, buildIncomingFile, isBlockResolved } from '../../store/mergeMockFile.js';
+import { useShallow } from 'zustand/react/shallow';
+import {
+    buildMergedLines,
+    buildLocalFile,
+    buildIncomingFile,
+    isBlockResolved,
+    allBlocksResolved,
+    countUnresolvedBlocks,
+} from '../../merge/engine.js';
 import {
     useMergeStore,
     selectUnresolvedBlocks,
     selectResolvedBlocks,
     selectCanApplyMerge,
-    selectActiveBlockLine,
-    MERGE_BLOCKS,
+    selectDocument,
+    selectBlocks,
+    selectBlockChoices,
+    selectMergedEdits,
+    selectActiveBlockId,
+    selectResolvedFileCount,
 } from '../../store/useMergeStore.js';
 import CodePanel from '../merge/CodePanel';
 import MergedLineRow from '../merge/MergedLineRow';
-import ConflictOverlay from '../merge/ConflictOverlay';
-import MergeFooter from '../merge/MergeFooter';
 import { useSyncedScroll } from '../merge/useSyncedScroll';
 
 export default function MergePage() {
+    const document = useMergeStore(selectDocument);
+    const blocks = useMergeStore(selectBlocks) ?? [];
+    const blockChoices = useMergeStore(selectBlockChoices) ?? {};
+    const mergedEdits = useMergeStore(selectMergedEdits) ?? {};
+    const activeBlockId = useMergeStore(selectActiveBlockId);
+    const files = useMergeStore(useShallow((s) => s.files));
+    const resolvedFileCount = useMergeStore(selectResolvedFileCount);
+
     const {
-        fileName,
-        branch,
-        activeBlockId,
-        showConflictOverlay,
+        activeFileId,
         searchQuery,
-        lastSync,
-        cursor,
         mergeApplied,
-        blockChoices,
-        mergedEdits,
         applyBlockFromLeft,
         applyBlockFromRight,
         setActiveBlock,
         setMergedLineContent,
-        setCursor,
-        dismissConflictOverlay,
         setSearchQuery,
+        setActiveFile,
         applyMerge,
-    } = useMergeStore();
+    } = useMergeStore(
+        useShallow((s) => ({
+            activeFileId: s.activeFileId,
+            searchQuery: s.searchQuery,
+            mergeApplied: s.mergeApplied,
+            applyBlockFromLeft: s.applyBlockFromLeft,
+            applyBlockFromRight: s.applyBlockFromRight,
+            setActiveBlock: s.setActiveBlock,
+            setMergedLineContent: s.setMergedLineContent,
+            setSearchQuery: s.setSearchQuery,
+            setActiveFile: s.setActiveFile,
+            applyMerge: s.applyMerge,
+        }))
+    );
 
-    const localLines = useMemo(() => buildLocalFile(blockChoices), [blockChoices]);
-    const incomingLines = useMemo(() => buildIncomingFile(blockChoices), [blockChoices]);
+    const fileStatuses = useMemo(
+        () =>
+            files.map((file) => {
+                const unresolved = countUnresolvedBlocksForFile(file);
+                return {
+                    fileId: file.fileId,
+                    path: file.document.path,
+                    resolved: isFileResolvedForUi(file),
+                    unresolvedBlocks: unresolved,
+                    totalBlocks: file.document.blocks.length,
+                };
+            }),
+        [files]
+    );
+
+    const localLines = useMemo(
+        () => (document ? buildLocalFile(document, blockChoices) : []),
+        [document, blockChoices]
+    );
+    const incomingLines = useMemo(
+        () => (document ? buildIncomingFile(document, blockChoices) : []),
+        [document, blockChoices]
+    );
     const unresolvedBlocks = useMergeStore(selectUnresolvedBlocks);
     const resolvedBlocks = useMergeStore(selectResolvedBlocks);
     const canApplyMerge = useMergeStore(selectCanApplyMerge);
-    const activeBlockLine = useMergeStore(selectActiveBlockLine);
 
     const mergedLines = useMemo(
-        () => buildMergedLines(blockChoices, mergedEdits),
-        [blockChoices, mergedEdits]
+        () => (document ? buildMergedLines(document, blockChoices, mergedEdits) : []),
+        [document, blockChoices, mergedEdits]
     );
 
     const { scrollRef, onScroll, scrollToLine } = useSyncedScroll(3);
 
-    const activeBlock = MERGE_BLOCKS.find((b) => b.id === activeBlockId) ?? MERGE_BLOCKS[0];
-    const activeOverlayBlock = MERGE_BLOCKS.find((b) => b.id === activeBlockId);
+    const activeBlock = blocks.find((b) => b.id === activeBlockId) ?? blocks[0];
+    const fileName = document?.path.split('/').pop() ?? '';
+    const totalFiles = fileStatuses.length;
 
     const handleBlockNav = useCallback(
         (blockId) => {
@@ -75,18 +119,22 @@ export default function MergePage() {
     const handleApplyBlockLeft = useCallback(
         (blockId) => {
             applyBlockFromLeft(blockId);
-            scrollToLine(getBlockStartLine(blockId));
+            scrollToLine(getBlockStartLine(blocks, blockId));
         },
-        [applyBlockFromLeft, scrollToLine]
+        [applyBlockFromLeft, scrollToLine, blocks]
     );
 
     const handleApplyBlockRight = useCallback(
         (blockId) => {
             applyBlockFromRight(blockId);
-            scrollToLine(getBlockStartLine(blockId));
+            scrollToLine(getBlockStartLine(blocks, blockId));
         },
-        [applyBlockFromRight, scrollToLine]
+        [applyBlockFromRight, scrollToLine, blocks]
     );
+
+    if (!document) {
+        return null;
+    }
 
     return (
         <div className="flex flex-col h-full bg-surface overflow-hidden">
@@ -126,24 +174,54 @@ export default function MergePage() {
                 </div>
             </header>
 
-            <div className="shrink-0 bg-surface-container-low flex items-center justify-between px-8 py-4">
-                <div className="flex items-center gap-4">
+            <div className="shrink-0 bg-surface-container-low flex items-center justify-between px-8 py-4 gap-4">
+                <div className="flex items-center gap-4 min-w-0">
                     <GitMerge className="w-3 h-3 text-tertiary shrink-0" strokeWidth={2.5} />
-                    <div>
-                        <h2 className="text-[16px] font-bold text-on-surface font-display">{fileName}</h2>
-                        <p className="text-[12px] text-on-surface-variant font-mono mt-0.5">
-                            {unresolvedBlocks} block{unresolvedBlocks === 1 ? '' : 's'} remaining
+                    <div className="min-w-0">
+                        <div className="flex items-center gap-3 flex-wrap">
+                            <h2 className="text-[16px] font-bold text-on-surface font-display truncate">{fileName}</h2>
+                            <label className="flex items-center gap-2 shrink-0">
+                                <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider font-body">
+                                    File
+                                </span>
+                                <select
+                                    value={activeFileId ?? ''}
+                                    onChange={(e) => setActiveFile(e.target.value)}
+                                    className="bg-surface-container-high text-on-surface text-[11px] font-mono rounded-md px-2 py-1 border border-outline-variant/30 focus:outline-none focus:border-primary/40 min-w-[220px]"
+                                    title="Switch conflicted file"
+                                >
+                                    {fileStatuses.map((file) => (
+                                        <option key={file.fileId} value={file.fileId}>
+                                            {formatFileOptionLabel(file)}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+                        </div>
+                        <p className="text-[12px] text-on-surface-variant font-mono mt-0.5 truncate">
+                            <span className="text-on-surface-variant/80">{document.path}</span>
+                            <span className="text-on-surface-variant/50 mx-2">·</span>
+                            {unresolvedBlocks} block{unresolvedBlocks === 1 ? '' : 's'} remaining in this file
+                            <span className="text-on-surface-variant/50 mx-2">·</span>
+                            {resolvedFileCount}/{totalFiles} files resolved
                             <span className="text-on-surface-variant/50 mx-2">·</span>
                             {mergedLines.length} lines
+                            {document.baseBranch && (
+                                <>
+                                    <span className="text-on-surface-variant/50 mx-2">·</span>
+                                    {document.baseBranch}
+                                    {document.incomingBranch && ` ← ${document.incomingBranch}`}
+                                </>
+                            )}
                             {mergeApplied && (
                                 <span className="text-secondary ml-2">· Merge applied</span>
                             )}
                         </p>
                     </div>
                 </div>
-                <div className="flex items-center gap-2 flex-wrap justify-end">
-                    {MERGE_BLOCKS.map((b) => {
-                        const resolved = isBlockResolved(blockChoices, mergedEdits, b.id);
+                <div className="flex items-center gap-2 flex-wrap justify-end shrink-0">
+                    {blocks.map((b) => {
+                        const resolved = isBlockResolved(document, blockChoices, mergedEdits, b.id);
                         return (
                             <button
                                 key={b.id}
@@ -158,9 +236,11 @@ export default function MergePage() {
                         );
                     })}
                     <div className="flex items-center gap-2 bg-surface-container-high px-3 py-1 rounded-bento ml-2">
-                        <span className="w-2 h-2 rounded-full bg-secondary" />
+                        <span
+                            className={`w-2 h-2 rounded-full ${canApplyMerge || mergeApplied ? 'bg-secondary' : 'bg-primary'}`}
+                        />
                         <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider font-body">
-                            {resolvedBlocks}/{MERGE_BLOCKS.length} blocks resolved
+                            {resolvedBlocks}/{blocks.length} blocks · {resolvedFileCount}/{totalFiles} files
                         </span>
                     </div>
                     <button
@@ -170,8 +250,10 @@ export default function MergePage() {
                         className="bg-primary text-[#003d88] px-5 py-1.5 rounded text-[14px] font-bold hover:opacity-90 transition-opacity font-display disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:opacity-35"
                         title={
                             canApplyMerge
-                                ? 'Finalize merge'
-                                : 'Resolve all blocks before applying'
+                                ? 'Finalize merge for all files'
+                                : mergeApplied
+                                  ? 'Merge already applied'
+                                  : `Resolve all files (${resolvedFileCount}/${totalFiles} ready)`
                         }
                     >
                         Apply Merge
@@ -187,7 +269,7 @@ export default function MergePage() {
                     blockChoices={blockChoices}
                     activeBlockId={activeBlockId}
                     actionLabel="Accept Left"
-                    onAction={() => applyBlockFromLeft(activeBlock.id)}
+                    onAction={() => activeBlock && applyBlockFromLeft(activeBlock.id)}
                     onApplyBlock={handleApplyBlockLeft}
                     scrollRef={scrollRef(0)}
                     onScroll={onScroll(0)}
@@ -209,9 +291,9 @@ export default function MergePage() {
                     <div
                         ref={scrollRef(1)}
                         onScroll={onScroll(1)}
-                        className="flex-1 overflow-auto min-h-0 relative"
+                        className="flex-1 overflow-auto min-h-0"
                     >
-                        <div className="min-w-max pt-4 pb-32">
+                        <div className="min-w-max pt-4 pb-24">
                             {mergedLines.map((line) => (
                                 <MergedLineRow
                                     key={line.id}
@@ -219,18 +301,9 @@ export default function MergePage() {
                                     content={line.content}
                                     type={line.type}
                                     onChange={(value) => setMergedLineContent(line.line, value)}
-                                    onFocus={() => setCursor({ line: line.line, col: 1 })}
-                                    onBlur={() => setMergedLineContent(line.line, line.content)}
                                 />
                             ))}
                         </div>
-                        {showConflictOverlay && activeOverlayBlock && unresolvedBlocks > 0 && (
-                            <ConflictOverlay
-                                line={activeBlockLine}
-                                conflictLabel={activeOverlayBlock.label}
-                                onDismiss={dismissConflictOverlay}
-                            />
-                        )}
                     </div>
                 </section>
                 <CodePanel
@@ -240,20 +313,35 @@ export default function MergePage() {
                     blockChoices={blockChoices}
                     activeBlockId={activeBlockId}
                     actionLabel="Accept Right"
-                    onAction={() => applyBlockFromRight(activeBlock.id)}
+                    onAction={() => activeBlock && applyBlockFromRight(activeBlock.id)}
                     onApplyBlock={handleApplyBlockRight}
                     scrollRef={scrollRef(2)}
                     onScroll={onScroll(2)}
                 />
             </div>
-
-            <MergeFooter branch={branch} lastSync={lastSync} cursor={cursor} />
         </div>
     );
 }
 
-function getBlockStartLine(blockId) {
-    return MERGE_BLOCKS.find((b) => b.id === blockId)?.startLine ?? 1;
+function isFileResolvedForUi(file) {
+    return allBlocksResolved(file.document, file.blockChoices, file.mergedEdits);
+}
+
+function countUnresolvedBlocksForFile(file) {
+    return countUnresolvedBlocks(file.document, file.blockChoices, file.mergedEdits);
+}
+
+function formatFileOptionLabel(file) {
+    const shortPath = file.path.split('/').pop() ?? file.path;
+    if (file.resolved) {
+        return `✓ ${shortPath}`;
+    }
+    const left = file.unresolvedBlocks;
+    return `○ ${shortPath} (${left} conflict${left === 1 ? '' : 's'})`;
+}
+
+function getBlockStartLine(blocks, blockId) {
+    return blocks.find((b) => b.id === blockId)?.startLine ?? 1;
 }
 
 function clsxBlockButton(isActive, isResolved) {
