@@ -11,7 +11,7 @@ export default function LoginPage() {
     const { user, loading, submitting, error, login, clearError } = useAuthStore();
     const navigate = useNavigate();
     const location = useLocation();
-    const redirectTo = location.state?.from ?? '/settings';
+    const redirectTo = location.state?.from ?? '/';
 
     if (!loading && user) {
         return <Navigate to={redirectTo} replace />;

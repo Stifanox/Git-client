@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { auth, isFirebaseConfigured } from '../services/firebase.js';
+import { useSettingsStore } from './useSettingsStore.js';
 
 const FIREBASE_ERROR_MESSAGES = {
     'auth/invalid-email': 'Nieprawidłowy adres e-mail.',
@@ -54,6 +55,7 @@ export const useAuthStore = create((set) => ({
     logout: async () => {
         if (!auth) return;
         set({ error: null });
+        useSettingsStore.getState().resetProfile();
         await signOut(auth);
     },
 

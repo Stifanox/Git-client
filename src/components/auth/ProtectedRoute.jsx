@@ -1,6 +1,7 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore.js';
+import ProfileBootstrap from './ProfileBootstrap.jsx';
 
 function AuthLoadingScreen() {
     return (
@@ -22,5 +23,10 @@ export default function ProtectedRoute() {
         return <Navigate to="/login" state={{ from: location.pathname }} replace />;
     }
 
-    return <Outlet />;
+    return (
+        <>
+            <ProfileBootstrap />
+            <Outlet />
+        </>
+    );
 }
