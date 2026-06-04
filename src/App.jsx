@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import AppLayout from "./components/layout/AppLayout";
 import AnalyticsListener from "./components/AnalyticsListener";
 import SettingsPage from "./components/pages/SettingsPage.jsx";
+import MergePage from "./components/pages/MergePage.jsx";
 
 
 export default function App() {
@@ -20,6 +21,7 @@ export default function App() {
                     <Route path="/" element={<Navigate to="/settings" replace />} />
 
                     <Route path="/settings" element={<SettingsPage />} />
+                    <Route path="/merge" element={<MergePage />} />
                     <Route path="/repositories" element={<div className="p-10">WIP: Repositories</div>} />
                     <Route path="/branches" element={<div className="p-10">WIP: Branches</div>} />
                     {/* ... reszta tras ... */}
