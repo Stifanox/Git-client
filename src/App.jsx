@@ -9,11 +9,12 @@ import LoginPage from "./components/pages/LoginPage.jsx";
 import OnboardingPage from "./components/pages/OnboardingPage.jsx";
 import SettingsPage from "./components/pages/SettingsPage.jsx";
 import MergePage from "./components/pages/MergePage.jsx";
+import { initAnalytics } from "./services/analytics.js";
 
 
 export default function App() {
     useEffect(() => {
-        // Inicjalizacja usług analitycznych i hotjar
+        initAnalytics();
     }, []);
 
     return (

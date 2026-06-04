@@ -1,16 +1,12 @@
-import { useEffect } from "react";
-import { useLocation } from "react-router-dom";
-import ReactGA from "react-ga4";
+import { useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
+import { trackPageView } from '../services/analytics.js';
 
 export default function AnalyticsListener() {
     const location = useLocation();
 
     useEffect(() => {
-        // Wysłanie eventu pageview przy każdej zmianie ścieżki (wymóg PDF)
-        ReactGA.send({
-            hitType: "pageview",
-            page: location.pathname + location.search,
-        });
+        trackPageView(location.pathname + location.search);
     }, [location]);
 
     return null;
