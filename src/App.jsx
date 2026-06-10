@@ -4,6 +4,8 @@ import AppLayout from "./components/layout/AppLayout";
 import AnalyticsListener from "./components/AnalyticsListener";
 import SettingsPage from "./components/pages/SettingsPage.jsx";
 import MergePage from "./components/pages/MergePage.jsx";
+import StagingPage from "./components/pages/StagingPage.jsx";
+import BranchesPage from "./components/pages/BranchesPage.jsx";
 import RepositoriesPage from "./components/pages/RepositoriesPage.jsx";
 import HistoryPage from "./components/pages/HistoryPage.jsx";
 import { initAnalytics } from "./services/analytics.js";
@@ -36,6 +38,8 @@ export default function App() {
                             <Route path="/merge" element={<MergePage />} />
                             <Route path="/repositories" element={<RepositoriesPage />} />
                             <Route path="/history" element={<HistoryPage />} />
+                            <Route path="/staging" element={<StagingPage />} />
+                            <Route path="/branches" element={<BranchesPage />} />
                         </Route>
                     </Route>
                 </Route>
