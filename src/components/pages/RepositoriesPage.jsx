@@ -16,6 +16,9 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useRepoStore, selectFilteredCommits } from '../../store/useRepoStore.js';
+import ToolbarButton from '../repositories/ToolbarButton';
+import Avatar from '../repositories/Avatar';
+import StatPill from '../repositories/StatPill';
 
 export default function RepositoriesPage() {
     const navigate = useNavigate();
@@ -244,42 +247,6 @@ export default function RepositoriesPage() {
                 </aside>
             </div>
         </div>
-    );
-}
-
-function ToolbarButton({ icon: Icon, label, onClick }) {
-    return (
-        <button
-            type="button"
-            onClick={onClick}
-            title={label}
-            aria-label={label}
-            className="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[13px] font-medium text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors font-display"
-        >
-            <Icon className="w-4 h-4" strokeWidth={2} />
-            <span className="hidden lg:inline">{label}</span>
-        </button>
-    );
-}
-
-function Avatar({ initials }) {
-    return (
-        <span className="flex items-center justify-center w-7 h-7 rounded-full bg-surface-container-highest text-[10px] font-bold text-on-surface font-body shrink-0">
-            {initials}
-        </span>
-    );
-}
-
-function StatPill({ icon: Icon, label, value, tone }) {
-    const toneClass = tone === 'warn' ? 'text-tertiary' : 'text-on-surface-variant';
-    return (
-        <span className="inline-flex items-center gap-1.5 text-[12px] font-body">
-            <Icon className={`w-3.5 h-3.5 ${toneClass}`} strokeWidth={2.5} />
-            <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-on-surface-variant/70">
-                {label}
-            </span>
-            <span className={`font-semibold font-mono ${toneClass}`}>{value}</span>
-        </span>
     );
 }
 
