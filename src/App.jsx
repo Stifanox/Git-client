@@ -9,6 +9,8 @@ import LoginPage from "./components/pages/LoginPage.jsx";
 import OnboardingPage from "./components/pages/OnboardingPage.jsx";
 import SettingsPage from "./components/pages/SettingsPage.jsx";
 import MergePage from "./components/pages/MergePage.jsx";
+import StagingPage from "./components/pages/StagingPage.jsx";
+import BranchesPage from "./components/pages/BranchesPage.jsx";
 import { initAnalytics } from "./services/analytics.js";
 
 
@@ -32,8 +34,9 @@ export default function App() {
                             <Route path="/" element={<Navigate to="/settings" replace />} />
                             <Route path="/settings" element={<SettingsPage />} />
                             <Route path="/merge" element={<MergePage />} />
+                            <Route path="/staging" element={<StagingPage />} />
+                            <Route path="/branches" element={<BranchesPage />} />
                             <Route path="/repositories" element={<div className="p-10">WIP: Repositories</div>} />
-                            <Route path="/branches" element={<div className="p-10">WIP: Branches</div>} />
                         </Route>
                     </Route>
                 </Route>
