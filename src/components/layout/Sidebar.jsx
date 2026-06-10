@@ -1,10 +1,13 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { Database, GitBranch, History, List, Settings, HelpCircle, SquareTerminal, LogOut } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore.js';
+import { useTerminalStore } from '../../store/useTerminalStore.js';
 
 export default function Sidebar() {
     const { user, logout } = useAuthStore();
     const navigate = useNavigate();
+    const terminalOpen = useTerminalStore((s) => s.isOpen);
+    const toggleTerminal = useTerminalStore((s) => s.toggle);
 
     const handleLogout = async () => {
         await logout();
@@ -19,8 +22,8 @@ export default function Sidebar() {
     ];
 
     const bottomNavItems = [
-        { icon: HelpCircle, label: 'Documentation', path: '/docs' },
-        { icon: SquareTerminal, label: 'Terminal', path: '/terminal' },
+        { icon: HelpCircle, label: 'Documentation', path: '/docs', type: 'link' },
+        { icon: SquareTerminal, label: 'Terminal', type: 'terminal' },
     ];
 
     // Wspólne klasy dla linków
@@ -77,18 +80,30 @@ export default function Sidebar() {
 
             {/* Bottom Navigation */}
             <div className="px-3 pb-6 space-y-1 mt-auto">
-                {bottomNavItems.map((item) => (
-                    <NavLink
-                        key={item.label}
-                        to={item.path}
-                        className={({ isActive }) =>
-                            `${linkBaseClasses} ${isActive ? linkActiveClasses : linkInactiveClasses}`
-                        }
-                    >
-                        <item.icon className="w-[18px] h-[18px]" strokeWidth={1.75} />
-                        {item.label}
-                    </NavLink>
-                ))}
+                {bottomNavItems.map((item) =>
+                    item.type === 'terminal' ? (
+                        <button
+                            key={item.label}
+                            type="button"
+                            onClick={toggleTerminal}
+                            className={`${linkBaseClasses} ${terminalOpen ? linkActiveClasses : linkInactiveClasses}`}
+                        >
+                            <item.icon className="w-[18px] h-[18px]" strokeWidth={1.75} />
+                            {item.label}
+                        </button>
+                    ) : (
+                        <NavLink
+                            key={item.label}
+                            to={item.path}
+                            className={({ isActive }) =>
+                                `${linkBaseClasses} ${isActive ? linkActiveClasses : linkInactiveClasses}`
+                            }
+                        >
+                            <item.icon className="w-[18px] h-[18px]" strokeWidth={1.75} />
+                            {item.label}
+                        </NavLink>
+                    )
+                )}
             </div>
         </aside>
     );

@@ -3,10 +3,13 @@ import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import ContextMenu from '../ui/ContextMenu';
 import ToastViewport from '../ui/ToastViewport';
+import TerminalPanel from '../terminal/TerminalPanel';
 import { useSettingsStore } from '../../store/useSettingsStore.js';
+import { useTerminalStore } from '../../store/useTerminalStore.js';
 
 export default function AppLayout() {
     const { fontSize } = useSettingsStore();
+    const terminalOpen = useTerminalStore((s) => s.isOpen);
 
     // Aplikowanie wielkości fonta globalnie
     useEffect(() => {
@@ -17,8 +20,11 @@ export default function AppLayout() {
     return (
         <div className="flex h-screen w-full bg-[#0e0e0e] text-gray-200 overflow-hidden font-sans">
             <Sidebar />
-            <main className="flex-1 overflow-hidden relative">
-                <Outlet />
+            <main className="flex-1 flex flex-col overflow-hidden relative min-w-0">
+                <div className="flex-1 min-h-0 overflow-hidden">
+                    <Outlet />
+                </div>
+                {terminalOpen && <TerminalPanel />}
             </main>
             <ContextMenu />
             <ToastViewport />
