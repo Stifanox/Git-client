@@ -32,9 +32,9 @@ export function trackPageView(path) {
         });
     }
 
-    if (hotjarReady) {
-        Hotjar.stateChange(path);
-    }
+    // if (hotjarReady) {
+    //     Hotjar.stateChange(path);
+    // }
 }
 
 export function isAnalyticsReady() {
