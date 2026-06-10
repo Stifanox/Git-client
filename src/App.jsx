@@ -7,6 +7,11 @@ import MergePage from "./components/pages/MergePage.jsx";
 import RepositoriesPage from "./components/pages/RepositoriesPage.jsx";
 import HistoryPage from "./components/pages/HistoryPage.jsx";
 import { initAnalytics } from "./services/analytics.js";
+import AuthBootstrap from "./components/auth/AuthBootstrap.jsx";
+import LoginPage from "./components/pages/LoginPage.jsx";
+import OnboardingPage from "./components/pages/OnboardingPage.jsx";
+import OnboardingGate from "./components/auth/OnboardingGate.jsx";
+import ProtectedRoute from "./components/auth/ProtectedRoute.jsx";
 
 
 export default function App() {
@@ -16,16 +21,23 @@ export default function App() {
 
     return (
         <BrowserRouter>
+            <AuthBootstrap />
             <AnalyticsListener />
             <Routes>
-                {/* Auth (ProtectedRoute/OnboardingGate) wyłączone — brak konfiguracji Firebase w .env. */}
-                <Route element={<AppLayout />}>
-                    <Route path="/" element={<Navigate to="/settings" replace />} />
-                    <Route path="/settings" element={<SettingsPage />} />
-                    <Route path="/merge" element={<MergePage />} />
-                    <Route path="/repositories" element={<RepositoriesPage />} />
-                    <Route path="/history" element={<HistoryPage />} />
-                    <Route path="/branches" element={<div className="p-10">WIP: Branches</div>} />
+                <Route path="/login" element={<LoginPage />} />
+
+                <Route element={<ProtectedRoute />}>
+                    <Route element={<OnboardingGate />}>
+                        <Route path="/onboarding" element={<OnboardingPage />} />
+
+                        <Route element={<AppLayout />}>
+                            <Route path="/" element={<Navigate to="/settings" replace />} />
+                            <Route path="/settings" element={<SettingsPage />} />
+                            <Route path="/merge" element={<MergePage />} />
+                            <Route path="/repositories" element={<RepositoriesPage />} />
+                            <Route path="/history" element={<HistoryPage />} />
+                        </Route>
+                    </Route>
                 </Route>
 
                 <Route path="*" element={<Navigate to="/settings" replace />} />
