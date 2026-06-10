@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useRepoStore, selectFilteredCommits } from '../../store/useRepoStore.js';
+import { useGitStore } from '../../store/useGitStore.js';
 import ToolbarButton from '../repositories/ToolbarButton';
 import Avatar from '../repositories/Avatar';
 import StatPill from '../repositories/StatPill';
@@ -30,6 +31,18 @@ export default function RepositoriesPage() {
     const checkout = useRepoStore((s) => s.checkout);
     const pushActivity = useRepoStore((s) => s.pushActivity);
     const commits = useRepoStore(selectFilteredCommits);
+
+    // Aktualnie wybrana gałąź pochodzi z globalnego symulatora Git (widok Branches).
+    const HEAD = useGitStore((s) => s.HEAD);
+    const localBranches = useGitStore((s) => s.branches.local);
+    const networkStatus = useGitStore((s) => s.networkStatus);
+    const push = useGitStore((s) => s.push);
+    const pull = useGitStore((s) => s.pull);
+    const currentBranch = localBranches.find((b) => b.name === HEAD);
+    const ahead = currentBranch?.ahead ?? 0;
+    const behind = currentBranch?.behind ?? 0;
+    const tracking = currentBranch?.tracking ?? null;
+    const busy = networkStatus !== 'idle';
 
     const quickActions = [
         {
@@ -60,14 +73,14 @@ export default function RepositoriesPage() {
                 </div>
                 <div className="flex items-center gap-6 shrink-0">
                     <div className="flex items-center gap-1">
-                        <ToolbarButton icon={Download} label="Pull" onClick={() => pushActivity('fetch', 'Pulling from origin/main...')} />
-                        <ToolbarButton icon={Upload} label="Push" onClick={() => pushActivity('fetch', 'Pushing 0 commits to origin/main...')} />
+                        <ToolbarButton icon={Download} label="Pull" onClick={() => pull(HEAD)} disabled={busy || !tracking} spinning={networkStatus === 'pulling'} />
+                        <ToolbarButton icon={Upload} label={tracking ? 'Push' : 'Publish'} onClick={() => push(HEAD)} disabled={busy} spinning={networkStatus === 'pushing'} />
                         <ToolbarButton icon={RefreshCw} label="Fetch" onClick={() => pushActivity('fetch', 'Fetching refs from origin...')} />
                         <ToolbarButton icon={Archive} label="Stash" onClick={() => pushActivity('info', 'Working tree stashed.')} />
                     </div>
                     <button
                         type="button"
-                        onClick={() => pushActivity('info', 'Opening commit dialog...')}
+                        onClick={() => navigate('/staging')}
                         className="flex items-center gap-2 px-4 py-1.5 text-[14px] font-bold bg-[#004395] text-[#bdd0ff] rounded-md hover:opacity-90 transition-opacity font-display"
                     >
                         <GitCommitHorizontal className="w-4 h-4" strokeWidth={2} />
@@ -93,17 +106,43 @@ export default function RepositoriesPage() {
                             <h2 className="text-[22px] font-extrabold text-on-surface font-display tracking-editorial">
                                 Repository History
                             </h2>
-                            <div className="flex items-center gap-3 mt-3">
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-surface-container-high text-[12px] font-semibold text-on-surface font-mono">
+                            <div className="flex items-center gap-3 mt-3 flex-wrap">
+                                <button
+                                    type="button"
+                                    onClick={() => navigate('/branches')}
+                                    title="Manage branches"
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-surface-container-high text-[12px] font-semibold text-on-surface font-mono hover:bg-surface-container-highest transition-colors"
+                                >
                                     <GitMerge className="w-3.5 h-3.5 text-primary" strokeWidth={2} />
-                                    {repository.branch}
-                                </span>
-                                <StatPill icon={ArrowUp} label="Ahead" value={`${repository.ahead} commits`} tone="neutral" />
-                                <StatPill icon={ArrowDown} label="Behind" value={`${repository.behind} commits`} tone="warn" />
+                                    {HEAD}
+                                </button>
+                                {tracking ? (
+                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-secondary/10 text-[11px] font-bold uppercase tracking-wider text-secondary font-body">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-secondary" />
+                                        Synced
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-tertiary/10 text-[11px] font-bold uppercase tracking-wider text-tertiary font-body">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-tertiary" />
+                                        Local only
+                                    </span>
+                                )}
+                                <StatPill icon={ArrowUp} label="Ahead" value={`${ahead} commits`} tone="neutral" />
+                                <StatPill icon={ArrowDown} label="Behind" value={`${behind} commits`} tone="warn" />
                             </div>
+                            {currentBranch && (
+                                <p className="text-[12px] text-on-surface-variant font-mono mt-2.5">
+                                    <span className="text-primary/90">{currentBranch.lastCommit}</span>
+                                    <span className="text-on-surface-variant/50 mx-2">·</span>
+                                    {currentBranch.message}
+                                    <span className="text-on-surface-variant/50 mx-2">·</span>
+                                    {tracking ?? 'no upstream'}
+                                </p>
+                            )}
                         </div>
                         <button
                             type="button"
+                            onClick={() => navigate('/branches')}
                             className="flex items-center gap-2 px-3.5 py-2 rounded-md bg-surface-container-high text-[13px] font-semibold text-on-surface hover:bg-surface-container-highest transition-colors font-display shrink-0"
                         >
                             <GitCompareArrows className="w-4 h-4 text-primary" strokeWidth={2} />

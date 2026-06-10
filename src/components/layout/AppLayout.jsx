@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
+import ContextMenu from '../ui/ContextMenu';
+import ToastViewport from '../ui/ToastViewport';
 import { useSettingsStore } from '../../store/useSettingsStore.js';
 
 export default function AppLayout() {
@@ -18,6 +20,8 @@ export default function AppLayout() {
             <main className="flex-1 overflow-hidden relative">
                 <Outlet />
             </main>
+            <ContextMenu />
+            <ToastViewport />
         </div>
     );
 }

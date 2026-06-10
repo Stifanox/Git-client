@@ -77,6 +77,27 @@ Wyłącznie **dark mode (Onyx)**. Tokeny zdefiniowane w `src/index.css` w bloku 
 - **Bento Box:** karty z `rounded-bento` (12px). Przyciski reużywalne, składane przez `clsx` + `tailwind-merge`, płaskie tła zamiast Material-shadow.
 - **Cienie:** bez ostrych drop-shadow; do "pływających" elementów użyj `shadow-ambient` (duży blur, ~8% krycia).
 
+### Reużywalne systemy interakcji
+
+Dwa globalne systemy są zamontowane raz w `AppLayout` i dostępne we wszystkich widokach:
+
+- **Menu kontekstowe (PPM):** store `useContextMenuStore` + overlay `components/ui/ContextMenu.jsx` + hook `components/ui/useContextMenu.js`. Aby dodać menu do dowolnego elementu, podłącz `onContextMenu` z hooka; akcje definiujesz lokalnie (per komponent), więc zależą od miejsca kliknięcia:
+
+  ```jsx
+  const onContextMenu = useContextMenu(() => [
+      { id: 'checkout', label: 'Checkout', icon: GitBranch, onSelect: () => checkout(name) },
+      { separator: true },
+      { id: 'delete', label: 'Delete', icon: Trash2, danger: true, disabled: isCurrent, onSelect: () => del(name) },
+  ]);
+  return <div onContextMenu={onContextMenu}>…</div>;
+  ```
+
+  Pozycja menu (`item`): `{ id, label, icon?, onSelect?, disabled?, danger?, hint? }` lub `{ separator: true }`.
+
+- **Toasty (feedback akcji):** store `useToastStore` + viewport `components/ui/ToastViewport.jsx`. Używaj do informowania o akcjach, zwłaszcza async. Tony: `success | info | warn | error | loading`. Dla operacji sieciowych twórz toast `loading` z `duration: 0`, a po zakończeniu wołaj `updateToast(id, { tone, title, description })`. Store'y mogą wołać toasty bez hooka: `useToastStore.getState().addToast(...)`.
+
+Akcje symulujące sieć (`push`, `pull`, ...) używają `networkStatus` w `useGitStore` (`idle | pushing | pulling`) do blokowania UI w trakcie operacji.
+
 ## 6. Stan i logika (Zustand)
 
 - Store'y w `src/store/`, jeden plik per domena (`useGitStore`, `useMergeStore`, `useRepoStore`, `useHistoryStore`, `useAuthStore`, `useSettingsStore`).

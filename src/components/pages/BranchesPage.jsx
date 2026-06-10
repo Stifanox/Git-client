@@ -1,12 +1,20 @@
 import { useState } from 'react';
-import { GitBranch, Plus, Globe } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { GitBranch, Plus, Globe, Upload, Loader2 } from 'lucide-react';
 import { useGitStore } from '../../store/useGitStore.js';
+import { useToastStore } from '../../store/useToastStore.js';
 import LocalBranchRow from '../branches/LocalBranchRow';
 import RemoteBranchRow from '../branches/RemoteBranchRow';
 
 export default function BranchesPage() {
-    const { HEAD, branches, checkout, createBranch } = useGitStore();
+    const navigate = useNavigate();
+    const {
+        HEAD, branches, networkStatus,
+        checkout, createBranch, push, pull, checkoutRemote, deleteBranch, deleteRemoteBranch,
+    } = useGitStore();
+    const addToast = useToastStore((s) => s.addToast);
     const currentBranch = branches.local.find((b) => b.name === HEAD);
+    const busy = networkStatus !== 'idle';
 
     const [showForm, setShowForm]         = useState(false);
     const [newBranchName, setNewBranchName] = useState('');
@@ -18,20 +26,50 @@ export default function BranchesPage() {
         setShowForm(false);
     };
 
+    const handleCopy = async (name) => {
+        try {
+            await navigator.clipboard.writeText(name);
+            addToast({ tone: 'info', title: 'Copied to clipboard', description: name });
+        } catch {
+            addToast({ tone: 'warn', title: 'Copy failed', description: name });
+        }
+    };
+
+    const handleMerge = (name) => {
+        navigate('/merge');
+        addToast({ tone: 'info', title: `Merging ${name} → ${HEAD}`, description: 'Opening Visual Merge Tool…' });
+    };
+
     return (
         <div className="flex-1 flex flex-col overflow-y-auto bg-surface h-screen selection:bg-primary/20">
             <header className="flex items-center justify-between px-12 py-8 shrink-0">
                 <h2 className="text-[24px] font-extrabold text-on-surface tracking-editorial font-display">
                     Branches
                 </h2>
-                <button
-                    type="button"
-                    onClick={() => setShowForm((v) => !v)}
-                    className="flex items-center gap-2 bg-primary hover:opacity-90 text-surface px-4 py-2 rounded-md font-bold text-[13.5px] transition-all font-body shadow-ambient"
-                >
-                    <Plus className="w-4 h-4" strokeWidth={2.5} />
-                    New Branch
-                </button>
+                <div className="flex items-center gap-2.5">
+                    <button
+                        type="button"
+                        onClick={() => push(HEAD)}
+                        disabled={busy}
+                        title={currentBranch?.tracking ? `Push ${HEAD} to origin` : `Publish ${HEAD} to origin`}
+                        className="flex items-center gap-2 bg-surface-container-high hover:bg-surface-container-highest text-on-surface px-4 py-2 rounded-md font-bold text-[13.5px] transition-all font-body disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                        {busy ? (
+                            <Loader2 className="w-4 h-4 animate-spin" strokeWidth={2} />
+                        ) : (
+                            <Upload className="w-4 h-4" strokeWidth={2} />
+                        )}
+                        {currentBranch?.tracking ? 'Push' : 'Publish'}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setShowForm((v) => !v)}
+                        className="flex items-center gap-2 bg-primary hover:opacity-90 text-surface px-4 py-2 rounded-md font-bold text-[13.5px] transition-all font-body shadow-ambient"
+                    >
+                        <Plus className="w-4 h-4" strokeWidth={2.5} />
+                        New Branch
+                    </button>
+                </div>
             </header>
 
             <div className="px-12 pb-16 space-y-10 max-w-4xl">
@@ -103,7 +141,13 @@ export default function BranchesPage() {
                                 key={b.name}
                                 branch={b}
                                 isCurrent={b.name === HEAD}
+                                busy={busy}
                                 onCheckout={checkout}
+                                onPush={push}
+                                onPull={pull}
+                                onMerge={handleMerge}
+                                onCopy={handleCopy}
+                                onDelete={deleteBranch}
                             />
                         ))}
                     </div>
@@ -116,7 +160,13 @@ export default function BranchesPage() {
                     </p>
                     <div className="space-y-0.5">
                         {branches.remote.map((b) => (
-                            <RemoteBranchRow key={b.name} branch={b} />
+                            <RemoteBranchRow
+                                key={b.name}
+                                branch={b}
+                                onCheckout={checkoutRemote}
+                                onCopy={handleCopy}
+                                onDelete={deleteRemoteBranch}
+                            />
                         ))}
                     </div>
                 </section>

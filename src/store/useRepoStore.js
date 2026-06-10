@@ -78,6 +78,16 @@ export const useRepoStore = create((set, get) => ({
         set((state) => ({
             activity: [...state.activity, { id: state.activity.length + 1, level, message }],
         })),
+
+    /** Dodaje commit na górę historii (deduplikacja po hash). */
+    addCommit: (commit) =>
+        set((state) => {
+            if (state.commits.some((c) => c.hash === commit.hash)) return state;
+            return {
+                commits: [commit, ...state.commits],
+                repository: { ...state.repository, totalCommits: state.repository.totalCommits + 1 },
+            };
+        }),
 }));
 
 /** Commity przefiltrowane wg zapytania (message / author / hash). */

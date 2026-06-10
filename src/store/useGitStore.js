@@ -1,4 +1,16 @@
 import { create } from 'zustand';
+import { useToastStore } from './useToastStore.js';
+import { useRepoStore } from './useRepoStore.js';
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const localNameFromRemote = (remoteName) => remoteName.replace(/^origin\//, '');
+
+/**
+ * Dopisuje wpis do strumienia aktywności widoku Repositories, dzięki czemu
+ * operacje na gałęziach (skądkolwiek wywołane) są tam widoczne na żywo.
+ */
+const logActivity = (level, message) => useRepoStore.getState().pushActivity(level, message);
 
 const MOCK_DIFF_APP = [
     { type: 'context', content: 'import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";' },
@@ -94,10 +106,10 @@ export const MOCK_STAGED = [
 
 export const MOCK_BRANCHES = {
     local: [
-        { name: 'main',                       lastCommit: 'a3f2c91', message: 'feat: initial project setup',             date: '2 hours ago',  tracking: 'origin/main' },
-        { name: 'feature/staging-ui',          lastCommit: 'b7d1e44', message: 'feat: add staging area store and mocks', date: '35 min ago',   tracking: null },
-        { name: 'feature/branches-view',       lastCommit: 'c9a3f12', message: 'wip: branches page layout',             date: '12 min ago',   tracking: null },
-        { name: 'fix/settings-firebase-crash', lastCommit: 'd4b2c88', message: 'fix: guard firebase calls when null',   date: '1 day ago',    tracking: 'origin/fix/settings-firebase-crash' },
+        { name: 'main',                       lastCommit: 'a3f2c91', message: 'feat: initial project setup',             date: '2 hours ago',  tracking: 'origin/main',                        ahead: 0, behind: 2 },
+        { name: 'feature/staging-ui',          lastCommit: 'b7d1e44', message: 'feat: add staging area store and mocks', date: '35 min ago',   tracking: null,                                 ahead: 3, behind: 0 },
+        { name: 'feature/branches-view',       lastCommit: 'c9a3f12', message: 'wip: branches page layout',             date: '12 min ago',   tracking: null,                                 ahead: 5, behind: 0 },
+        { name: 'fix/settings-firebase-crash', lastCommit: 'd4b2c88', message: 'fix: guard firebase calls when null',   date: '1 day ago',    tracking: 'origin/fix/settings-firebase-crash', ahead: 0, behind: 0 },
     ],
     remote: [
         { name: 'origin/main',                       lastCommit: 'a3f2c91', message: 'feat: initial project setup',           date: '2 hours ago' },
@@ -137,27 +149,193 @@ export const useGitStore = create((set, get) => ({
         set({ staged: [] });
     },
 
+    /** `git checkout <local-branch>` — przełącza HEAD na istniejącą gałąź lokalną. */
     checkout: (name) => {
         if (!get().branches.local.some((b) => b.name === name)) return;
+        if (get().HEAD === name) return;
         set({ HEAD: name });
+        useToastStore.getState().addToast({ tone: 'success', title: `Switched to ${name}` });
+        logActivity('info', `Switched to branch '${name}'`);
     },
 
     createBranch: (name) => {
-        if (!name.trim()) return;
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        if (get().branches.local.some((b) => b.name === trimmed)) {
+            useToastStore.getState().addToast({ tone: 'warn', title: 'Branch already exists', description: trimmed });
+            return;
+        }
         const base = get().branches.local.find((b) => b.name === get().HEAD);
         set((s) => ({
-            HEAD: name.trim(),
+            HEAD: trimmed,
             branches: {
                 ...s.branches,
                 local: [...s.branches.local, {
-                    name: name.trim(),
+                    name: trimmed,
                     lastCommit: base?.lastCommit ?? 'a3f2c91',
                     message: `branched off ${s.HEAD}`,
                     date: 'just now',
                     tracking: null,
+                    ahead: 0,
+                    behind: 0,
                 }],
             },
         }));
+        useToastStore.getState().addToast({ tone: 'success', title: `Created ${trimmed}`, description: `Branched off ${base?.name ?? 'HEAD'}` });
+        logActivity('info', `Created branch '${trimmed}' from '${base?.name ?? 'HEAD'}'`);
+    },
+
+    /**
+     * `git push` gałęzi lokalnej na origin. Jeśli gałąź nie ma jeszcze trackingu,
+     * publikuje ją (tworzy wpis remote i ustawia upstream). Async — symuluje sieć.
+     */
+    push: async (branchName) => {
+        const name = branchName ?? get().HEAD;
+        const branch = get().branches.local.find((b) => b.name === name);
+        if (!branch) return;
+        if (get().networkStatus !== 'idle') return;
+
+        const { addToast, updateToast } = useToastStore.getState();
+        const isPublish = !branch.tracking;
+        const remoteName = `origin/${name}`;
+        const toastId = addToast({
+            tone: 'loading',
+            title: isPublish ? `Publishing ${name}…` : `Pushing ${name}…`,
+            description: `→ ${remoteName}`,
+            duration: 0,
+        });
+
+        set({ networkStatus: 'pushing' });
+        await delay(900);
+
+        const pushedCount = branch.ahead || 0;
+        set((s) => {
+            const remoteEntry = { name: remoteName, lastCommit: branch.lastCommit, message: branch.message, date: 'just now' };
+            const idx = s.branches.remote.findIndex((r) => r.name === remoteName);
+            const remote = idx >= 0
+                ? s.branches.remote.map((r, i) => (i === idx ? remoteEntry : r))
+                : [...s.branches.remote, remoteEntry];
+            const local = s.branches.local.map((b) => (b.name === name ? { ...b, tracking: remoteName, ahead: 0 } : b));
+            return { branches: { local, remote }, networkStatus: 'idle' };
+        });
+
+        updateToast(toastId, {
+            tone: 'success',
+            title: isPublish ? `Published ${name}` : `Pushed ${name}`,
+            description: `${branch.lastCommit} → ${remoteName}`,
+        });
+        logActivity('fetch', isPublish
+            ? `Published '${name}' to ${remoteName}`
+            : `Pushed ${pushedCount} commit${pushedCount === 1 ? '' : 's'} to ${remoteName}`);
+
+        // Odzwierciedlenie pusha w historii widoku Repositories.
+        useRepoStore.getState().addCommit({
+            hash: branch.lastCommit,
+            author: 'You',
+            initials: 'ME',
+            message: branch.message,
+            description: `Pushed to ${remoteName}`,
+            date: 'just now',
+        });
+    },
+
+    /** `git pull` gałęzi śledzącej origin. Async — symuluje sieć. */
+    pull: async (branchName) => {
+        const name = branchName ?? get().HEAD;
+        const branch = get().branches.local.find((b) => b.name === name);
+        if (!branch || !branch.tracking) return;
+        if (get().networkStatus !== 'idle') return;
+
+        const { addToast, updateToast } = useToastStore.getState();
+        const toastId = addToast({
+            tone: 'loading',
+            title: `Pulling ${name}…`,
+            description: `${branch.tracking} → ${name}`,
+            duration: 0,
+        });
+
+        const pulledCount = branch.behind || 0;
+        set({ networkStatus: 'pulling' });
+        await delay(900);
+        set((s) => ({
+            networkStatus: 'idle',
+            branches: { ...s.branches, local: s.branches.local.map((b) => (b.name === name ? { ...b, behind: 0 } : b)) },
+        }));
+
+        updateToast(toastId, {
+            tone: 'success',
+            title: pulledCount > 0 ? `Pulled ${name}` : 'Already up to date',
+            description: pulledCount > 0
+                ? `Fast-forwarded ${pulledCount} commit${pulledCount === 1 ? '' : 's'} from ${branch.tracking}`
+                : `${name} is in sync with ${branch.tracking}`,
+        });
+        logActivity('fetch', pulledCount > 0
+            ? `Pulled ${pulledCount} commit${pulledCount === 1 ? '' : 's'} from ${branch.tracking}`
+            : `Already up to date with ${branch.tracking}`);
+    },
+
+    /**
+     * `git checkout <remote-branch>` — tworzy lokalną gałąź śledzącą (jeśli nie
+     * istnieje) i przełącza na nią HEAD.
+     */
+    checkoutRemote: (remoteName) => {
+        const remote = get().branches.remote.find((r) => r.name === remoteName);
+        if (!remote) return;
+        const localName = localNameFromRemote(remoteName);
+        const existedBefore = get().branches.local.some((b) => b.name === localName);
+
+        set((s) => {
+            const local = existedBefore
+                ? s.branches.local
+                : [...s.branches.local, {
+                    name: localName,
+                    lastCommit: remote.lastCommit,
+                    message: remote.message,
+                    date: 'just now',
+                    tracking: remoteName,
+                    ahead: 0,
+                    behind: 0,
+                }];
+            return { branches: { ...s.branches, local }, HEAD: localName };
+        });
+
+        useToastStore.getState().addToast({
+            tone: 'success',
+            title: existedBefore ? `Switched to ${localName}` : `Created ${localName}`,
+            description: `Tracking ${remoteName}`,
+        });
+        logActivity('info', existedBefore
+            ? `Switched to branch '${localName}'`
+            : `Created '${localName}' tracking ${remoteName}`);
+    },
+
+    /** Usuwa gałąź lokalną (poza aktualnie wybraną). */
+    deleteBranch: (name) => {
+        if (name === get().HEAD) {
+            useToastStore.getState().addToast({
+                tone: 'warn',
+                title: 'Cannot delete current branch',
+                description: `Checkout another branch before deleting ${name}.`,
+            });
+            return;
+        }
+        if (!get().branches.local.some((b) => b.name === name)) return;
+        set((s) => ({ branches: { ...s.branches, local: s.branches.local.filter((b) => b.name !== name) } }));
+        useToastStore.getState().addToast({ tone: 'info', title: `Deleted branch ${name}` });
+        logActivity('warn', `Deleted local branch '${name}'`);
+    },
+
+    /** Usuwa gałąź zdalną i czyści tracking u gałęzi lokalnych, które ją śledziły. */
+    deleteRemoteBranch: (remoteName) => {
+        if (!get().branches.remote.some((r) => r.name === remoteName)) return;
+        set((s) => ({
+            branches: {
+                local: s.branches.local.map((b) => (b.tracking === remoteName ? { ...b, tracking: null } : b)),
+                remote: s.branches.remote.filter((r) => r.name !== remoteName),
+            },
+        }));
+        useToastStore.getState().addToast({ tone: 'info', title: `Deleted ${remoteName}` });
+        logActivity('warn', `Deleted remote branch '${remoteName}'`);
     },
 
     setNetworkStatus: (status) => set({ networkStatus: status }),
