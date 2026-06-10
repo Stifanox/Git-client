@@ -175,7 +175,7 @@ Hotjar inicjalizowany przez kod hotjar dodany w tagu head jako skrypt
 
 ![img.png](readme/hotjar.png)
 
-> Panel Hotjar — na moment tworzenia readme hotjar nie zarejestorwał w panelu jeszcze zdarzeń.
+> Panel Hotjar — analityka zebrała dwie sesje.
 
 
 ---
