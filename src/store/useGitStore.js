@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { useToastStore } from './useToastStore.js';
 import { useRepoStore } from './useRepoStore.js';
+import { useHistoryStore, buildCommitFromStaged } from './useHistoryStore.js';
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -145,8 +146,39 @@ export const useGitStore = create((set, get) => ({
     unstageAll: () => set((s) => ({ unstaged: [...s.unstaged, ...s.staged], staged: [] })),
 
     commit: (message) => {
-        if (!message.trim() || get().staged.length === 0) return;
-        set({ staged: [] });
+        const trimmed = message.trim();
+        const { staged, HEAD } = get();
+        if (!trimmed || staged.length === 0) return;
+
+        const newCommit = buildCommitFromStaged(trimmed, staged);
+        const tipHash = newCommit.fullHash.slice(0, 7);
+
+        useHistoryStore.getState().addCommitToBranch(HEAD, newCommit);
+
+        set((s) => ({
+            staged: [],
+            branches: {
+                ...s.branches,
+                local: s.branches.local.map((b) =>
+                    b.name === HEAD
+                        ? {
+                            ...b,
+                            lastCommit: tipHash,
+                            message: trimmed,
+                            date: 'just now',
+                            ahead: (b.ahead ?? 0) + 1,
+                        }
+                        : b
+                ),
+            },
+        }));
+
+        useToastStore.getState().addToast({
+            tone: 'success',
+            title: 'Commit created',
+            description: `${tipHash} on ${HEAD}`,
+        });
+        logActivity('info', `Committed on '${HEAD}': ${trimmed}`);
     },
 
     /** `git checkout <local-branch>` — przełącza HEAD na istniejącą gałąź lokalną. */
@@ -154,6 +186,7 @@ export const useGitStore = create((set, get) => ({
         if (!get().branches.local.some((b) => b.name === name)) return;
         if (get().HEAD === name) return;
         set({ HEAD: name });
+        useHistoryStore.getState().setActiveBranch(name);
         useToastStore.getState().addToast({ tone: 'success', title: `Switched to ${name}` });
         logActivity('info', `Switched to branch '${name}'`);
     },
@@ -165,7 +198,9 @@ export const useGitStore = create((set, get) => ({
             useToastStore.getState().addToast({ tone: 'warn', title: 'Branch already exists', description: trimmed });
             return;
         }
-        const base = get().branches.local.find((b) => b.name === get().HEAD);
+        const parentBranch = get().HEAD;
+        const base = get().branches.local.find((b) => b.name === parentBranch);
+        useHistoryStore.getState().seedBranchFromParent(trimmed, parentBranch);
         set((s) => ({
             HEAD: trimmed,
             branches: {
@@ -173,7 +208,7 @@ export const useGitStore = create((set, get) => ({
                 local: [...s.branches.local, {
                     name: trimmed,
                     lastCommit: base?.lastCommit ?? 'a3f2c91',
-                    message: `branched off ${s.HEAD}`,
+                    message: `branched off ${parentBranch}`,
                     date: 'just now',
                     tracking: null,
                     ahead: 0,
@@ -181,6 +216,7 @@ export const useGitStore = create((set, get) => ({
                 }],
             },
         }));
+        useHistoryStore.getState().setActiveBranch(trimmed);
         useToastStore.getState().addToast({ tone: 'success', title: `Created ${trimmed}`, description: `Branched off ${base?.name ?? 'HEAD'}` });
         logActivity('info', `Created branch '${trimmed}' from '${base?.name ?? 'HEAD'}'`);
     },
@@ -210,7 +246,8 @@ export const useGitStore = create((set, get) => ({
 
         const pushedCount = branch.ahead || 0;
         set((s) => {
-            const remoteEntry = { name: remoteName, lastCommit: branch.lastCommit, message: branch.message, date: 'just now' };
+            const current = s.branches.local.find((b) => b.name === name) ?? branch;
+            const remoteEntry = { name: remoteName, lastCommit: current.lastCommit, message: current.message, date: 'just now' };
             const idx = s.branches.remote.findIndex((r) => r.name === remoteName);
             const remote = idx >= 0
                 ? s.branches.remote.map((r, i) => (i === idx ? remoteEntry : r))
@@ -219,21 +256,23 @@ export const useGitStore = create((set, get) => ({
             return { branches: { local, remote }, networkStatus: 'idle' };
         });
 
+        const tip = get().branches.local.find((b) => b.name === name);
+
         updateToast(toastId, {
             tone: 'success',
             title: isPublish ? `Published ${name}` : `Pushed ${name}`,
-            description: `${branch.lastCommit} → ${remoteName}`,
+            description: `${tip?.lastCommit ?? branch.lastCommit} → ${remoteName}`,
         });
         logActivity('fetch', isPublish
             ? `Published '${name}' to ${remoteName}`
             : `Pushed ${pushedCount} commit${pushedCount === 1 ? '' : 's'} to ${remoteName}`);
 
-        // Odzwierciedlenie pusha w historii widoku Repositories.
+        const historyTip = useHistoryStore.getState().branchHistories[name]?.[0];
         useRepoStore.getState().addCommit({
-            hash: branch.lastCommit,
-            author: 'You',
+            hash: tip?.lastCommit ?? branch.lastCommit,
+            author: historyTip?.author ?? 'You',
             initials: 'ME',
-            message: branch.message,
+            message: historyTip?.message ?? branch.message,
             description: `Pushed to ${remoteName}`,
             date: 'just now',
         });
@@ -284,6 +323,10 @@ export const useGitStore = create((set, get) => ({
         const localName = localNameFromRemote(remoteName);
         const existedBefore = get().branches.local.some((b) => b.name === localName);
 
+        if (!existedBefore && !useHistoryStore.getState().branchHistories[localName]) {
+            useHistoryStore.getState().seedBranchFromParent(localName, 'main');
+        }
+
         set((s) => {
             const local = existedBefore
                 ? s.branches.local
@@ -298,6 +341,8 @@ export const useGitStore = create((set, get) => ({
                 }];
             return { branches: { ...s.branches, local }, HEAD: localName };
         });
+
+        useHistoryStore.getState().setActiveBranch(localName);
 
         useToastStore.getState().addToast({
             tone: 'success',

@@ -5,7 +5,7 @@ import FileRow from '../staging/FileRow';
 import DiffViewer from '../staging/DiffViewer';
 
 export default function StagingPage() {
-    const { unstaged, staged, stage, unstage, discard, stageAll, unstageAll, commit } = useGitStore();
+    const { HEAD, unstaged, staged, stage, unstage, discard, stageAll, unstageAll, commit, push, networkStatus } = useGitStore();
 
     const [selectedId, setSelectedId] = useState(() => unstaged[0]?.id ?? staged[0]?.id ?? null);
     const [commitMsg, setCommitMsg]   = useState('');
@@ -25,6 +25,15 @@ export default function StagingPage() {
         setCommitMsg('');
         setSelectedId(null);
     };
+
+    const handleCommitAndPush = async () => {
+        commit(commitMsg);
+        setCommitMsg('');
+        setSelectedId(null);
+        await push(HEAD);
+    };
+
+    const busy = networkStatus !== 'idle';
 
     return (
         <div className="flex h-full bg-surface overflow-hidden">
@@ -119,8 +128,8 @@ export default function StagingPage() {
                         </button>
                         <button
                             type="button"
-                            onClick={handleCommit}
-                            disabled={staged.length === 0 || !commitMsg.trim()}
+                            onClick={handleCommitAndPush}
+                            disabled={staged.length === 0 || !commitMsg.trim() || busy}
                             className="flex-1 flex items-center justify-center gap-1.5 bg-primary disabled:opacity-30 hover:opacity-90 disabled:cursor-not-allowed text-surface px-3 py-2.5 rounded-md font-bold text-[12px] transition-all font-body shadow-ambient"
                         >
                             <Upload className="w-3.5 h-3.5" strokeWidth={2} />
