@@ -23,8 +23,6 @@ Aplikacja **symuluje** operacje Gita w pamięci (Zustand + mocki). Nie korzysta 
 
 ## Zrzuty ekranu aplikacji
 
-Zrzuty zapisuj w katalogu `docs/screenshots/`. Poniżej oznaczone miejsca — podmień ścieżki po wklejeniu plików PNG.
-
 ### Logowanie i onboarding
 
 ![img.png](readme/login.png)
