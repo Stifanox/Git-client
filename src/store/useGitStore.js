@@ -1,7 +1,17 @@
 import { create } from 'zustand';
+import {
+    MOCK_DIFF_APP,
+    MOCK_DIFF_SIDEBAR,
+    MOCK_DIFF_DELETED,
+    MOCK_DIFF_NEW_STORE,
+    STAGING_MERGE_PATHS,
+    STAGING_MERGE_MOCK_FILES,
+} from '../mocks/stagingDiffs.js';
+import { createStagingMergeDocuments } from '../merge/stagingAdapter.js';
 import { useToastStore } from './useToastStore.js';
 import { useRepoStore } from './useRepoStore.js';
-import { useHistoryStore, buildCommitFromStaged } from './useHistoryStore.js';
+import { useHistoryStore, buildCommitFromStaged, buildMergeCommit } from './useHistoryStore.js';
+import { useMergeStore } from './useMergeStore.js';
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -13,80 +23,49 @@ const localNameFromRemote = (remoteName) => remoteName.replace(/^origin\//, '');
  */
 const logActivity = (level, message) => useRepoStore.getState().pushActivity(level, message);
 
-const MOCK_DIFF_APP = [
-    { type: 'context', content: 'import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";' },
-    { type: 'context', content: 'import AppLayout from "./components/layout/AppLayout";' },
-    { type: 'context', content: '' },
-    { type: 'removed', content: 'import AuthBootstrap from "./components/auth/AuthBootstrap.jsx";' },
-    { type: 'removed', content: 'import ProtectedRoute from "./components/auth/ProtectedRoute.jsx";' },
-    { type: 'added',   content: 'import StagingPage from "./components/pages/StagingPage.jsx";' },
-    { type: 'added',   content: 'import BranchesPage from "./components/pages/BranchesPage.jsx";' },
-    { type: 'context', content: 'import SettingsPage from "./components/pages/SettingsPage.jsx";' },
-    { type: 'context', content: '' },
-    { type: 'context', content: 'export default function App() {' },
-    { type: 'context', content: '    return (' },
-    { type: 'context', content: '        <BrowserRouter>' },
-    { type: 'removed', content: '            <AuthBootstrap />' },
-    { type: 'context', content: '            <Routes>' },
-    { type: 'removed', content: '                <Route element={<ProtectedRoute />}>' },
-    { type: 'added',   content: '                <Route element={<AppLayout />}>' },
-    { type: 'context', content: '                    <Route path="/settings" element={<SettingsPage />} />' },
-    { type: 'added',   content: '                    <Route path="/staging"  element={<StagingPage />} />' },
-    { type: 'added',   content: '                    <Route path="/branches" element={<BranchesPage />} />' },
-    { type: 'context', content: '                </Route>' },
-    { type: 'context', content: '            </Routes>' },
-    { type: 'context', content: '        </BrowserRouter>' },
-    { type: 'context', content: '    );' },
-    { type: 'context', content: '}' },
-];
+/** Konflikt push tylko gdy użytkownik zacommitował App.jsx / Sidebar.jsx (nie unstaged, nie mock historia). */
+const getUnpushedUserCommits = (state, branchName) => {
+    const hashes = state.unpushedUserCommits[branchName] ?? [];
+    const commits = useHistoryStore.getState().branchHistories[branchName] ?? [];
+    return commits.filter((c) => hashes.includes(c.hash));
+};
 
-const MOCK_DIFF_SIDEBAR = [
-    { type: 'context', content: 'import { NavLink } from "react-router-dom";' },
-    { type: 'removed', content: 'import { ..., LogOut } from "lucide-react";' },
-    { type: 'added',   content: 'import { Database, GitBranch, History, List, Settings } from "lucide-react";' },
-    { type: 'context', content: '' },
-    { type: 'removed', content: 'import { useAuthStore } from "../../store/useAuthStore.js";' },
-    { type: 'context', content: '' },
-    { type: 'context', content: 'export default function Sidebar() {' },
-    { type: 'removed', content: '    const { user, logout } = useAuthStore();' },
-    { type: 'context', content: '    const topNavItems = [' },
-    { type: 'context', content: '        { icon: Database,  label: "Repositories", path: "/repositories" },' },
-    { type: 'added',   content: '        { icon: GitBranch, label: "Branches",     path: "/branches" },' },
-    { type: 'added',   content: '        { icon: List,      label: "Staging",      path: "/staging" },' },
-    { type: 'context', content: '        { icon: Settings,  label: "Settings",     path: "/settings" },' },
-    { type: 'context', content: '    ];' },
-];
+const getMergePathsForBranch = (state, branchName) => {
+    const paths = new Set();
+    getUnpushedUserCommits(state, branchName).forEach((commit) => {
+        commit.details.files.forEach((f) => {
+            if (STAGING_MERGE_PATHS.includes(f.path)) paths.add(f.path);
+        });
+    });
+    return [...paths];
+};
 
-const MOCK_DIFF_DELETED = [
-    { type: 'removed', content: 'import ReactGA from "react-ga4";' },
-    { type: 'removed', content: 'import Hotjar from "@hotjar/browser";' },
-    { type: 'removed', content: '' },
-    { type: 'removed', content: 'export function initAnalytics() {' },
-    { type: 'removed', content: '    if (import.meta.env.VITE_GA_MEASUREMENT_ID) {' },
-    { type: 'removed', content: '        ReactGA.initialize(import.meta.env.VITE_GA_MEASUREMENT_ID);' },
-    { type: 'removed', content: '    }' },
-    { type: 'removed', content: '    if (import.meta.env.VITE_HOTJAR_SITE_ID) {' },
-    { type: 'removed', content: '        Hotjar.init(Number(import.meta.env.VITE_HOTJAR_SITE_ID), 6);' },
-    { type: 'removed', content: '    }' },
-    { type: 'removed', content: '}' },
-];
+const resolveMergeFiles = (state, branchName) =>
+    getMergePathsForBranch(state, branchName).map((path) => {
+        for (const commit of getUnpushedUserCommits(state, branchName)) {
+            const histFile = commit.details.files.find((f) => f.path === path);
+            if (histFile?.diff?.length) {
+                return {
+                    path,
+                    diff: histFile.diff.map((row) => ({
+                        type: row.type,
+                        content: row.content,
+                    })),
+                };
+            }
+        }
+        return STAGING_MERGE_MOCK_FILES[path];
+    }).filter(Boolean);
 
-const MOCK_DIFF_NEW_STORE = [
-    { type: 'added', content: 'import { create } from "zustand";' },
-    { type: 'added', content: '' },
-    { type: 'added', content: 'export const useGitStore = create((set, get) => ({' },
-    { type: 'added', content: '    HEAD: "feature/staging-ui",' },
-    { type: 'added', content: '    branches: { local: [...], remote: [...] },' },
-    { type: 'added', content: '    unstaged: [],  // pliki do staged' },
-    { type: 'added', content: '    staged: [],    // pliki gotowe do commita' },
-    { type: 'added', content: '' },
-    { type: 'added', content: '    stage(fileId)   { /* unstaged → staged  */ },' },
-    { type: 'added', content: '    unstage(fileId) { /* staged  → unstaged */ },' },
-    { type: 'added', content: '    discard(fileId) { /* odrzuć zmiany      */ },' },
-    { type: 'added', content: '    commit(message) { /* utwórz commit      */ },' },
-    { type: 'added', content: '    checkout(name)  { /* zmień HEAD         */ },' },
-    { type: 'added', content: '}));' },
-];
+const openStagingMergeConflict = (branchName, branch, mergeFiles) => {
+    const remoteName = branch.tracking ?? `origin/${branchName}`;
+    logActivity('warn', `Push of '${branchName}' blocked — conflicts in ${mergeFiles.map((f) => f.path).join(', ')}`);
+    const documents = createStagingMergeDocuments(mergeFiles, {
+        baseBranch: branchName,
+        incomingBranch: remoteName,
+    });
+    useMergeStore.getState().openMergeSession(documents);
+};
 
 // ─── Mock dane ─────────────────────────────────────────────────────────────
 
@@ -127,6 +106,8 @@ export const useGitStore = create((set, get) => ({
     unstaged: MOCK_UNSTAGED,
     staged: MOCK_STAGED,
     networkStatus: 'idle',
+    /** Hashe commitów użytkownika jeszcze nie wypchniętych na remote (per gałąź). */
+    unpushedUserCommits: {},
 
     stage: (fileId) => set((s) => {
         const file = s.unstaged.find((f) => f.id === fileId);
@@ -148,15 +129,20 @@ export const useGitStore = create((set, get) => ({
     commit: (message) => {
         const trimmed = message.trim();
         const { staged, HEAD } = get();
-        if (!trimmed || staged.length === 0) return;
+        if (!trimmed || staged.length === 0) return { ok: false };
 
-        const newCommit = buildCommitFromStaged(trimmed, staged);
+        const committedFiles = [...staged];
+        const newCommit = buildCommitFromStaged(trimmed, committedFiles);
         const tipHash = newCommit.fullHash.slice(0, 7);
 
         useHistoryStore.getState().addCommitToBranch(HEAD, newCommit);
 
         set((s) => ({
             staged: [],
+            unpushedUserCommits: {
+                ...s.unpushedUserCommits,
+                [HEAD]: [...(s.unpushedUserCommits[HEAD] ?? []), newCommit.hash],
+            },
             branches: {
                 ...s.branches,
                 local: s.branches.local.map((b) =>
@@ -179,6 +165,89 @@ export const useGitStore = create((set, get) => ({
             description: `${tipHash} on ${HEAD}`,
         });
         logActivity('info', `Committed on '${HEAD}': ${trimmed}`);
+
+        return { ok: true, hash: tipHash, message: trimmed, files: committedFiles };
+    },
+
+    /** Commit na bieżącej gałęzi, potem push (wspólna logika konfliktu w `push`). */
+    commitAndPush: async (message) => {
+        const result = get().commit(message);
+        if (!result?.ok) return { ok: false };
+
+        const pushResult = await get().push(get().HEAD);
+        return {
+            ok: true,
+            conflict: pushResult?.conflict ?? false,
+            hash: result.hash,
+        };
+    },
+
+    /**
+     * Finalizuje merge po Apply Merge — dopisuje merge commit, kończy push
+     * (oryginalny commit zostaje w historii pod merge commitem).
+     */
+    finalizeMerge: ({ incomingBranch, mergeResults }) => {
+        if (!mergeResults?.length) return false;
+
+        const HEAD = get().HEAD;
+        const branch = get().branches.local.find((b) => b.name === HEAD);
+        if (!branch) return false;
+
+        const remoteName = branch.tracking ?? incomingBranch ?? `origin/${HEAD}`;
+        const mergeCommit = buildMergeCommit(HEAD, incomingBranch ?? remoteName, mergeResults);
+        const tipHash = mergeCommit.fullHash.slice(0, 7);
+
+        useHistoryStore.getState().addCommitToBranch(HEAD, mergeCommit);
+
+        const mergedPaths = new Set(mergeResults.map((r) => r.path));
+
+        set((s) => {
+            const remoteEntry = {
+                name: remoteName,
+                lastCommit: tipHash,
+                message: mergeCommit.message,
+                date: 'just now',
+            };
+            const idx = s.branches.remote.findIndex((r) => r.name === remoteName);
+            const remote = idx >= 0
+                ? s.branches.remote.map((r, i) => (i === idx ? remoteEntry : r))
+                : [...s.branches.remote, remoteEntry];
+            const local = s.branches.local.map((b) =>
+                b.name === HEAD
+                    ? {
+                        ...b,
+                        lastCommit: tipHash,
+                        message: mergeCommit.message,
+                        date: 'just now',
+                        tracking: remoteName,
+                        ahead: 0,
+                    }
+                    : b
+            );
+
+            return {
+                branches: { local, remote },
+                unstaged: s.unstaged.filter((f) => !mergedPaths.has(f.path)),
+                unpushedUserCommits: { ...s.unpushedUserCommits, [HEAD]: [] },
+            };
+        });
+
+        useToastStore.getState().addToast({
+            tone: 'success',
+            title: 'Merge completed',
+            description: `${mergeCommit.message} → ${remoteName}`,
+        });
+        logActivity('info', `Merge completed on '${HEAD}': ${mergeCommit.message}`);
+        useRepoStore.getState().addCommit({
+            hash: tipHash,
+            author: 'You',
+            initials: 'ME',
+            message: mergeCommit.message,
+            description: `Merged ${incomingBranch ?? remoteName} into ${HEAD}`,
+            date: 'just now',
+        });
+
+        return true;
     },
 
     /** `git checkout <local-branch>` — przełącza HEAD na istniejącą gałąź lokalną. */
@@ -203,6 +272,7 @@ export const useGitStore = create((set, get) => ({
         useHistoryStore.getState().seedBranchFromParent(trimmed, parentBranch);
         set((s) => ({
             HEAD: trimmed,
+            unpushedUserCommits: { ...s.unpushedUserCommits, [trimmed]: [] },
             branches: {
                 ...s.branches,
                 local: [...s.branches.local, {
@@ -228,12 +298,16 @@ export const useGitStore = create((set, get) => ({
     push: async (branchName) => {
         const name = branchName ?? get().HEAD;
         const branch = get().branches.local.find((b) => b.name === name);
-        if (!branch) return;
-        if (get().networkStatus !== 'idle') return;
+        if (!branch || get().networkStatus !== 'idle') return { ok: false };
+
+        const state = get();
+        const mergePaths = getMergePathsForBranch(state, name);
+        const mergePending = mergePaths.length > 0;
+        const mergeFiles = mergePending ? resolveMergeFiles(state, name) : [];
 
         const { addToast, updateToast } = useToastStore.getState();
         const isPublish = !branch.tracking;
-        const remoteName = `origin/${name}`;
+        const remoteName = branch.tracking ?? `origin/${name}`;
         const toastId = addToast({
             tone: 'loading',
             title: isPublish ? `Publishing ${name}…` : `Pushing ${name}…`,
@@ -244,6 +318,17 @@ export const useGitStore = create((set, get) => ({
         set({ networkStatus: 'pushing' });
         await delay(900);
 
+        if (mergePending) {
+            set({ networkStatus: 'idle' });
+            updateToast(toastId, {
+                tone: 'error',
+                title: 'Push rejected — merge required',
+                description: `Remote changed on ${remoteName}. Resolve conflicts to continue.`,
+            });
+            openStagingMergeConflict(name, branch, mergeFiles);
+            return { ok: true, conflict: true };
+        }
+
         const pushedCount = branch.ahead || 0;
         set((s) => {
             const current = s.branches.local.find((b) => b.name === name) ?? branch;
@@ -253,7 +338,11 @@ export const useGitStore = create((set, get) => ({
                 ? s.branches.remote.map((r, i) => (i === idx ? remoteEntry : r))
                 : [...s.branches.remote, remoteEntry];
             const local = s.branches.local.map((b) => (b.name === name ? { ...b, tracking: remoteName, ahead: 0 } : b));
-            return { branches: { local, remote }, networkStatus: 'idle' };
+            return {
+                branches: { local, remote },
+                networkStatus: 'idle',
+                unpushedUserCommits: { ...s.unpushedUserCommits, [name]: [] },
+            };
         });
 
         const tip = get().branches.local.find((b) => b.name === name);
@@ -276,6 +365,8 @@ export const useGitStore = create((set, get) => ({
             description: `Pushed to ${remoteName}`,
             date: 'just now',
         });
+
+        return { ok: true, conflict: false };
     },
 
     /** `git pull` gałęzi śledzącej origin. Async — symuluje sieć. */

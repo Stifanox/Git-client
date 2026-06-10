@@ -8,7 +8,9 @@ import {
     Redo2,
 } from 'lucide-react';
 import { useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
+import { useGitStore } from '../../store/useGitStore.js';
 import {
     buildMergedLines,
     buildLocalFile,
@@ -34,6 +36,8 @@ import MergedLineRow from '../merge/MergedLineRow';
 import { useSyncedScroll } from '../merge/useSyncedScroll';
 
 export default function MergePage() {
+    const navigate = useNavigate();
+    const finalizeMerge = useGitStore((s) => s.finalizeMerge);
     const document = useMergeStore(selectDocument);
     const blocks = useMergeStore(selectBlocks) ?? [];
     const blockChoices = useMergeStore(selectBlockChoices) ?? {};
@@ -131,6 +135,20 @@ export default function MergePage() {
         },
         [applyBlockFromRight, scrollToLine, blocks]
     );
+
+    const handleApplyMerge = useCallback(() => {
+        applyMerge();
+        const { mergeApplied, mergeResults, files: mergeFiles } = useMergeStore.getState();
+        if (!mergeApplied || !mergeResults?.length) return;
+
+        const incomingBranch = mergeFiles[0]?.document.incomingBranch
+            ?? `origin/${useGitStore.getState().HEAD}`;
+
+        const ok = finalizeMerge({ incomingBranch, mergeResults });
+        if (ok) {
+            navigate('/repositories');
+        }
+    }, [applyMerge, finalizeMerge, navigate]);
 
     if (!document) {
         return null;
@@ -245,7 +263,7 @@ export default function MergePage() {
                     </div>
                     <button
                         type="button"
-                        onClick={applyMerge}
+                        onClick={handleApplyMerge}
                         disabled={!canApplyMerge}
                         className="bg-primary text-[#003d88] px-5 py-1.5 rounded text-[14px] font-bold hover:opacity-90 transition-opacity font-display disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:opacity-35"
                         title={

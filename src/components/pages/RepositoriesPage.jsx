@@ -5,7 +5,6 @@ import {
     RefreshCw,
     Archive,
     GitCommitHorizontal,
-    GitCompareArrows,
     CheckCircle2,
     ArrowUp,
     ArrowDown,
@@ -44,6 +43,13 @@ export default function RepositoriesPage() {
     const tracking = currentBranch?.tracking ?? null;
     const busy = networkStatus !== 'idle';
 
+    const handlePush = async () => {
+        const result = await push(HEAD);
+        if (result?.conflict) {
+            navigate('/merge');
+        }
+    };
+
     const quickActions = [
         {
             icon: GitMerge,
@@ -74,7 +80,7 @@ export default function RepositoriesPage() {
                 <div className="flex items-center gap-6 shrink-0">
                     <div className="flex items-center gap-1">
                         <ToolbarButton icon={Download} label="Pull" onClick={() => pull(HEAD)} disabled={busy || !tracking} spinning={networkStatus === 'pulling'} />
-                        <ToolbarButton icon={Upload} label={tracking ? 'Push' : 'Publish'} onClick={() => push(HEAD)} disabled={busy} spinning={networkStatus === 'pushing'} />
+                        <ToolbarButton icon={Upload} label={tracking ? 'Push' : 'Publish'} onClick={handlePush} disabled={busy} spinning={networkStatus === 'pushing'} />
                         <ToolbarButton icon={RefreshCw} label="Fetch" onClick={() => pushActivity('fetch', 'Fetching refs from origin...')} />
                         <ToolbarButton icon={Archive} label="Stash" onClick={() => pushActivity('info', 'Working tree stashed.')} />
                     </div>
@@ -140,14 +146,6 @@ export default function RepositoriesPage() {
                                 </p>
                             )}
                         </div>
-                        <button
-                            type="button"
-                            onClick={() => navigate('/branches')}
-                            className="flex items-center gap-2 px-3.5 py-2 rounded-md bg-surface-container-high text-[13px] font-semibold text-on-surface hover:bg-surface-container-highest transition-colors font-display shrink-0"
-                        >
-                            <GitCompareArrows className="w-4 h-4 text-primary" strokeWidth={2} />
-                            Compare Branches
-                        </button>
                     </div>
 
                     {/* Build status */}

@@ -1,11 +1,17 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Plus, Minus, RotateCcw, GitCommit, Upload } from 'lucide-react';
 import { useGitStore } from '../../store/useGitStore.js';
 import FileRow from '../staging/FileRow';
 import DiffViewer from '../staging/DiffViewer';
 
 export default function StagingPage() {
-    const { HEAD, unstaged, staged, stage, unstage, discard, stageAll, unstageAll, commit, push, networkStatus } = useGitStore();
+    const navigate = useNavigate();
+    const {
+        HEAD, unstaged, staged,
+        stage, unstage, discard, stageAll, unstageAll,
+        commit, commitAndPush, networkStatus,
+    } = useGitStore();
 
     const [selectedId, setSelectedId] = useState(() => unstaged[0]?.id ?? staged[0]?.id ?? null);
     const [commitMsg, setCommitMsg]   = useState('');
@@ -27,10 +33,13 @@ export default function StagingPage() {
     };
 
     const handleCommitAndPush = async () => {
-        commit(commitMsg);
+        const result = await commitAndPush(commitMsg);
+        if (!result?.ok) return;
         setCommitMsg('');
         setSelectedId(null);
-        await push(HEAD);
+        if (result.conflict) {
+            navigate('/merge');
+        }
     };
 
     const busy = networkStatus !== 'idle';
@@ -147,6 +156,8 @@ export default function StagingPage() {
                             Staging Area
                         </h2>
                         <p className="text-[12px] text-on-surface-variant mt-0.5 font-body">
+                            <span className="font-mono text-primary">{HEAD}</span>
+                            {' · '}
                             {unstaged.length} unstaged &nbsp;·&nbsp; {staged.length} staged
                         </p>
                     </div>

@@ -40,6 +40,13 @@ export default function BranchesPage() {
         addToast({ tone: 'info', title: `Merging ${name} → ${HEAD}`, description: 'Opening Visual Merge Tool…' });
     };
 
+    const handlePush = async (name) => {
+        const result = await push(name);
+        if (result?.conflict) {
+            navigate('/merge');
+        }
+    };
+
     return (
         <div className="flex-1 flex flex-col overflow-y-auto bg-surface h-screen selection:bg-primary/20">
             <header className="flex items-center justify-between px-12 py-8 shrink-0">
@@ -49,7 +56,7 @@ export default function BranchesPage() {
                 <div className="flex items-center gap-2.5">
                     <button
                         type="button"
-                        onClick={() => push(HEAD)}
+                        onClick={() => handlePush(HEAD)}
                         disabled={busy}
                         title={currentBranch?.tracking ? `Push ${HEAD} to origin` : `Publish ${HEAD} to origin`}
                         className="flex items-center gap-2 bg-surface-container-high hover:bg-surface-container-highest text-on-surface px-4 py-2 rounded-md font-bold text-[13.5px] transition-all font-body disabled:opacity-40 disabled:cursor-not-allowed"
@@ -143,7 +150,7 @@ export default function BranchesPage() {
                                 isCurrent={b.name === HEAD}
                                 busy={busy}
                                 onCheckout={checkout}
-                                onPush={push}
+                                onPush={handlePush}
                                 onPull={pull}
                                 onMerge={handleMerge}
                                 onCopy={handleCopy}

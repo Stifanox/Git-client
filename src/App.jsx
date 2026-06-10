@@ -8,6 +8,7 @@ import StagingPage from "./components/pages/StagingPage.jsx";
 import BranchesPage from "./components/pages/BranchesPage.jsx";
 import RepositoriesPage from "./components/pages/RepositoriesPage.jsx";
 import HistoryPage from "./components/pages/HistoryPage.jsx";
+import DocumentationPage from "./components/pages/DocumentationPage.jsx";
 import { initAnalytics } from "./services/analytics.js";
 import AuthBootstrap from "./components/auth/AuthBootstrap.jsx";
 import LoginPage from "./components/pages/LoginPage.jsx";
@@ -40,6 +41,7 @@ export default function App() {
                             <Route path="/history" element={<HistoryPage />} />
                             <Route path="/staging" element={<StagingPage />} />
                             <Route path="/branches" element={<BranchesPage />} />
+                            <Route path="/docs" element={<DocumentationPage />} />
                         </Route>
                     </Route>
                 </Route>

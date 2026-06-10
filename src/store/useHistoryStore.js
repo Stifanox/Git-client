@@ -165,12 +165,45 @@ export const buildCommitFromStaged = (message, stagedFiles, author = 'You') => {
         diff: mapStagingDiff(f.diff),
     }));
 
-    return makeCommit(fullHash, message.trim(), author, 'just now', {
-        description: stagedFiles.length === 1
-            ? `Updated ${stagedFiles[0].path}.`
-            : `Changed ${stagedFiles.length} files: ${stagedFiles.map((f) => f.path).join(', ')}.`,
-        files,
+    return {
+        ...makeCommit(fullHash, message.trim(), author, 'just now', {
+            description: stagedFiles.length === 1
+                ? `Updated ${stagedFiles[0].path}.`
+                : `Changed ${stagedFiles.length} files: ${stagedFiles.map((f) => f.path).join(', ')}.`,
+            files,
+        }),
+        isUserCommit: true,
+    };
+};
+
+/** Commit merge po rozwiązaniu konfliktów w Visual Merge Tool. */
+export const buildMergeCommit = (targetBranch, incomingBranch, mergeResults, author = 'You') => {
+    const fullHash = generateHash();
+    const incomingLabel = incomingBranch.replace(/^origin\//, '');
+    const message = `merge: branch '${incomingLabel}' into ${targetBranch}`;
+
+    const files = mergeResults.map((r) => {
+        const lines = r.content.split('\n');
+        return {
+            path: r.path,
+            added: lines.filter((l) => l.trim()).length,
+            removed: 0,
+            diff: lines.slice(0, 12).map((content, i) => ({
+                type: 'context',
+                line: i + 1,
+                content: content || ' ',
+            })),
+        };
     });
+
+    return {
+        ...makeCommit(fullHash, message, author, 'just now', {
+            description: `Merged '${incomingBranch}' after resolving conflicts in ${mergeResults.map((r) => r.path).join(', ')}.`,
+            files,
+            isMerge: true,
+        }),
+        isUserCommit: true,
+    };
 };
 
 export const HISTORY_DIFF_PREVIEW_LIMIT = PREVIEW_LINE_LIMIT;
